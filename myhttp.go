@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -15,6 +14,7 @@ const sTimeOutClient = 8
 
 func main() {
 	parallel := flag.Int("parallel", 10, "max number of parallel requests")
+	encoding := flag.Bool("encoding", false, "is gzip encoding accepted by request")
 	flag.Parse()
 
 	// Make a channel for the URLs pool.
@@ -47,7 +47,7 @@ func main() {
 			defer wg.Done()
 			// To every worker: do fetch urls until the pool is empty.
 			for url := range urls {
-				Fetch(cl, url, res)
+				Fetch(cl, url, res, *encoding)
 			}
 		}()
 	}
@@ -66,11 +66,17 @@ func main() {
 }
 
 // Fetch writes the hashed response body into a channel, following a request.
-func Fetch(cl http.Client, url string, res chan string) {
+func Fetch(cl http.Client, url string, res chan string, encoding bool) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		res <- fmt.Sprint(err, "\n")
 		return
+	}
+	// set encoding
+	if encoding {
+		req.Header.Add("Accept-Encoding", "gzip")
+	} else {
+		req.Header.Add("Accept-Encoding", "identity")
 	}
 	resp, err := cl.Do(req)
 	if err != nil {
@@ -84,6 +90,7 @@ func Fetch(cl http.Client, url string, res chan string) {
 		return
 	}
 
-	// Write the MD5 hash of the response body to the results channel
-	res <- fmt.Sprintf("%s %x", url, md5.Sum(b))
+	// Write first 40 characters of response in the channel
+	s := string(b)[:40]
+	res <- fmt.Sprintf("%s: %s...", url, s)
 }
